@@ -1,0 +1,27 @@
+data:
+    path: data/lego.npy
+
+train:
+    batch_size: 1024
+    n_iters: 200000
+    max_lr: 5e-4
+    min_lr: 5e-5
+
+model:
+    near: 2
+    far: 6
+    n_pts_on_ray: 64
+    perturb: True
+    min_freq_pow_pts: 0
+    max_freq_pow_pts: 10
+    min_freq_pow_view: 0
+    max_freq_pow_view: 4
+    sigma_mlp_channels: [63, 256, 256, 256, 256, 256, 256, 256, 256]
+    rgb_mlp_channels: [283, 256, 128]
+    pos_pts_pct: 0.9
+
+eval:
+    freq: 2000
+    n_vis_poses: 40
+    vis_phi: "-np.pi / 6"
+    vis_radius: 4

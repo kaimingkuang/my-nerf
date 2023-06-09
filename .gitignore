@@ -161,3 +161,8 @@ cython_debug/
 
 .vscode/
 data/
+scripts/
+*.code-workspace
+wandb_cfg.yaml
+logs/
+wandb/

@@ -1,7 +1,0 @@
-data:
-    image_dir: /kaiming-fast-vol-1/workspace/my-nerf/data/bottles/rgb
-    pose_dir: /kaiming-fast-vol-1/workspace/my-nerf/data/bottles/pose
-    intrinsics: /kaiming-fast-vol-1/workspace/my-nerf/data/bottles/intrinsics.txt
-
-train:
-    batch_size: 1024
