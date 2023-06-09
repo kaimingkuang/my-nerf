@@ -38,8 +38,7 @@ def get_vis_poses(thetas, phi, radius):
 
 
 def save_video(images, output_path):
-    images = (255 * np.clip(images, 0, 1)).astype(np.uint8)
-    imageio.mimwrite(output_path, images, fps=30, quality=8)
+    imageio.mimwrite(output_path, images, fps=10, quality=8)
 
 
 if __name__ == "__main__":

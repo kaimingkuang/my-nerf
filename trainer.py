@@ -130,16 +130,18 @@ class Trainer:
 
     @torch.no_grad()
     def visualize(self, step):
-        self.model.eval()
         # output visualization
+        self.model.eval()
         rgbs = []
         for pose in tqdm(self.vis_poses):
             rgbs.append(self.run_nerf(pose, training=False).cpu().numpy())
         b, (h, w) = len(rgbs), self.image_shape
         rgbs = np.stack(rgbs).reshape((b, h, w, -1))
+        rgbs = (255 * np.clip(rgbs, 0, 1)).astype(np.uint8)
 
         save_video(rgbs, f"{self.log_dir}/videos/step_{step}.mp4")
-        wandb.log({"video": wandb.Video(rgbs, fps=10)})
+        wandb.log({"video": wandb.Video(rgbs.transpose((0, 3, 1, 2)),
+            fps=10)})
 
     @torch.no_grad()
     def evaluate(self):
@@ -160,17 +162,16 @@ class Trainer:
         return avg_loss, avg_psnr
 
     def train(self):
-        if not self.cfg.debug:
-            wandb_cfg = OmegaConf.load("wandb_cfg.yaml")
-            wandb.login(key=wandb_cfg.key)
-            wandb.init(
-                config=self.cfg,
-                entity=wandb_cfg.entity,
-                project=wandb_cfg.project,
-                name=self.cur_time
-            )
-        else:
+        if self.cfg.debug:
             self.cfg.eval.freq = 1
+        wandb_cfg = OmegaConf.load("wandb_cfg.yaml")
+        wandb.login(key=wandb_cfg.key)
+        wandb.init(
+            config=self.cfg,
+            entity=wandb_cfg.entity,
+            project=wandb_cfg.project,
+            name=self.cur_time
+        )            
 
         best_psnr = 0
         for i in range(self.cfg.train.n_iters):
@@ -213,8 +214,7 @@ class Trainer:
                 torch.save(self.model.state_dict(),
                     os.path.join(self.log_dir, f"weights/model_{i}.pth"))
 
-            if not self.cfg.debug:
-                wandb.log(metrics)
+            wandb.log(metrics)
 
         wandb.close()
 
