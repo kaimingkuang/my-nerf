@@ -216,6 +216,8 @@ class Trainer:
             if not self.cfg.debug:
                 wandb.log(metrics)
 
+        wandb.close()
+
 
 if __name__ == "__main__":
     wandb_cfg = OmegaConf.load("wandb_cfg.yaml")
