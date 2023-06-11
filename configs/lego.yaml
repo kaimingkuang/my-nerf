@@ -21,7 +21,7 @@ model:
     pos_pts_pct: 0.9
 
 eval:
-    freq: 2000
+    freq: 50000
     n_vis_poses: 40
     vis_phi: "-np.pi / 6"
     vis_radius: 4

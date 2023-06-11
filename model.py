@@ -39,9 +39,8 @@ class NeRF(nn.Module):
 
     def compute_rays(self, image_shape, int_mat, pose):
         h, w = image_shape
-        xs, ys = torch.meshgrid(torch.linspace(0, w - 1, w),
-            torch.linspace(0, h - 1, h), indexing="ij")
-        xs, ys = xs.T, ys.T
+        xs, ys = torch.meshgrid(torch.linspace(0, h - 1, h),
+            torch.linspace(0, w - 1, w), indexing="ij")
         focal_x, focal_y = int_mat[0, 0], int_mat[1, 1]
         princ_x, princ_y = int_mat[0, 2], int_mat[1, 2]
         directions = torch.stack([
@@ -49,19 +48,14 @@ class NeRF(nn.Module):
             -(ys - princ_y) / focal_y,
             -torch.ones_like(xs)
         ], -1)
-        rays_d = torch.einsum("hwm,mn->hwn", directions, pose[:3, :3])
+        rays_d = torch.einsum("hwm,mn->hwn", directions, pose[:3, :3].T)
         rays_o = pose[:3, -1].expand(rays_d.shape)
 
         return rays_o, rays_d
 
     def sample_random_coords(self, rays_o, rays_d, image, n_coords):
-        h, w = image.size()[:-1]
-        coords = torch.stack(torch.meshgrid(torch.linspace(0, h - 1, h),
-            torch.linspace(0, w - 1, w), indexing="ij"), -1)
-        coords = coords.reshape((-1, 2)).long()
-
-        pos_coords = coords[image.sum(dim=-1)[coords[:, 0], coords[:, 1]] > 0]
-        neg_coords = coords[image.sum(dim=-1)[coords[:, 0], coords[:, 1]] == 0]
+        pos_coords = torch.argwhere(image.sum(dim=-1) > 0)
+        neg_coords = torch.argwhere(image.sum(dim=-1) == 0)
         n_pos_coords = int(self.cfg.train.batch_size\
             * self.cfg.model.pos_pts_pct)
         n_neg_coords = n_coords - n_pos_coords
@@ -144,9 +138,22 @@ if __name__ == "__main__":
     from omegaconf import OmegaConf
 
 
+    def get_rays(H, W, K, c2w):
+        i, j = torch.meshgrid(torch.linspace(0, W-1, W), torch.linspace(0, H-1, H))  # pytorch's meshgrid has indexing='ij'
+        i = i.t()
+        j = j.t()
+        dirs = torch.stack([(i-K[0][2])/K[0][0], -(j-K[1][2])/K[1][1], -torch.ones_like(i)], -1)
+        # Rotate ray directions from camera frame to the world frame
+        rays_d = torch.sum(dirs[..., np.newaxis, :] * c2w[:3,:3], -1)  # dot product, equals to: [c2w.dot(dir) for dir in dirs]
+        # Translate camera frame's origin to the world frame. It is the origin of all rays.
+        rays_o = c2w[:3,-1].expand(rays_d.shape)
+        return rays_o, rays_d
+
+
     cfg = OmegaConf.load("configs/lego.yaml")
     nerf = NeRF(cfg)
-    pt_encs = torch.rand(1024, 64, 63)
-    view_encs = torch.rand(1024, 64, 27)
-    rgbs, sigmas = nerf(pt_encs, view_encs)
+    pose = torch.rand(4, 4)
+    int_mat = torch.rand(3, 3)
+    rays_o_0, rays_d_0 = nerf.compute_rays((400, 400), int_mat, pose)
+    rays_o_1, rays_d_1 = get_rays(400, 400, int_mat, pose)
     print(1)

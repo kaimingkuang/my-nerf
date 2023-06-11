@@ -50,7 +50,7 @@ class Trainer:
         self.images_test = torch.from_numpy(data["test"]["images"])
         self.poses_test = torch.from_numpy(data["test"]["poses"])
         focal = data["train"]["focal"]
-        h, w = self.images_train.shape[2:]
+        h, w = self.images_train.shape[1:3]
         self.intrinsics = torch.tensor([
             [focal, 0, 0.5 * w],
             [0, focal, 0.5 * h],
@@ -128,6 +128,14 @@ class Trainer:
         else:
             return rgbs
 
+    def save_ckpt(self, output_path):
+        ckpt = {
+            "model": self.model.state_dict(),
+            "optimizer": self.optimizer.state_dict(),
+            "scheduler": self.scheduler.state_dict(),
+        }
+        torch.save(ckpt, output_path)
+
     @torch.no_grad()
     def visualize(self, step):
         # output visualization
@@ -140,8 +148,8 @@ class Trainer:
         rgbs = (255 * np.clip(rgbs, 0, 1)).astype(np.uint8)
 
         save_video(rgbs, f"{self.log_dir}/videos/step_{step}.mp4")
-        wandb.log({"video": wandb.Video(rgbs.transpose((0, 3, 1, 2)),
-            fps=10)})
+
+        return wandb.Video(rgbs.transpose((0, 3, 1, 2)), fps=10)
 
     @torch.no_grad()
     def evaluate(self):
@@ -176,7 +184,7 @@ class Trainer:
         best_psnr = 0
         for i in range(self.cfg.train.n_iters):
             self.model.train()
-            # sample one image
+            # sample one image and pose
             image, pose = self.sample_image()
 
             rgbs, targets = self.run_nerf(pose, image, training=True)
@@ -198,21 +206,20 @@ class Trainer:
 
             # evaluation
             if (i + 1) % self.cfg.eval.freq == 0:
-                self.visualize(step=i)
+                video = self.visualize(step=i)
                 val_loss, val_psnr = self.evaluate()
                 metrics.update({
                     "loss/val": val_loss,
-                    "psnr/val": val_psnr
+                    "psnr/val": val_psnr,
+                    "video": video
                 })
-
-                print(f"Iter {i}\t\tLoss={loss:.4f}|{val_loss:.4f}, PSNR={psnr:.4f}|{val_psnr:.4f}")
 
                 if val_psnr > best_psnr:
                     best_psnr = val_psnr
-                    torch.save(self.model.state_dict(),
-                        os.path.join(self.log_dir, "weights/model_best.pth"))
-                torch.save(self.model.state_dict(),
-                    os.path.join(self.log_dir, f"weights/model_{i}.pth"))
+                    self.save_ckpt(os.path.join(self.log_dir,
+                        "weights/ckpt_best.pth"))
+                self.save_ckpt(os.path.join(self.log_dir,
+                    f"weights/ckpt_{i}.pth"))
 
             wandb.log(metrics)
 
@@ -220,13 +227,13 @@ class Trainer:
 
 
 if __name__ == "__main__":
-    wandb_cfg = OmegaConf.load("wandb_cfg.yaml")
-    wandb.login(key=wandb_cfg.key)
-    wandb.init(
-        # config=self.cfg,
-        entity=wandb_cfg.entity,
-        project=wandb_cfg.project,
-        name="test"
-    )
-    frames = np.random.randint(low=0, high=256, size=(10, 3, 100, 100), dtype=np.uint8)
-    wandb.log({"video": wandb.Video(frames, fps=4)})
+    # cfg = OmegaConf.load("configs/lego.yaml")
+    # trainer = Trainer(cfg)
+    # ckpt = {
+    #     "model": trainer.model.state_dict(),
+    #     "optimizer": trainer.optimizer.state_dict(),
+    #     "scheduler": trainer.scheduler.state_dict(),
+    # }
+    # torch.save(ckpt, "test.pth")
+    ckpt = torch.load("test.pth")
+    print(1)
