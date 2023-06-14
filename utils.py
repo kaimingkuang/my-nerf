@@ -39,10 +39,3 @@ def get_vis_poses(thetas, phi, radius):
 
 def save_video(images, output_path):
     imageio.mimwrite(output_path, images, fps=10, quality=8)
-
-
-if __name__ == "__main__":
-    # my_res = _get_pose(np.pi / 7, np.pi / 7, 4)
-    # nerf_res = pose_spherical(180 / 7, 180 / 7, 4)
-    # print(np.allclose(my_res, nerf_res))
-    pass

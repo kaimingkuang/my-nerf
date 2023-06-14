@@ -1,5 +1,6 @@
 data:
     path: data/lego.npy
+    image_shape: [256, 256]
 
 train:
     batch_size: 1024
@@ -21,7 +22,7 @@ model:
     pos_pts_pct: 0.9
 
 eval:
-    freq: 50000
+    freq: 1000
     n_vis_poses: 40
     vis_phi: "-np.pi / 6"
     vis_radius: 4

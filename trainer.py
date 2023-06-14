@@ -1,6 +1,7 @@
 import os
 from datetime import datetime
 
+import cv2
 import numpy as np
 import torch
 import wandb
@@ -43,17 +44,35 @@ class Trainer:
 
     def load_data(self):
         data = np.load(self.cfg.data.path, allow_pickle=True).item()
-        self.images_train = torch.from_numpy(data["train"]["images"])
+
+        self.images_train = data["train"]["images"]
         self.poses_train = torch.from_numpy(data["train"]["poses"])
-        self.images_val = torch.from_numpy(data["val"]["images"])
+        self.images_val = data["val"]["images"]
         self.poses_val = torch.from_numpy(data["val"]["poses"])
-        self.images_test = torch.from_numpy(data["test"]["images"])
+        self.images_test = data["test"]["images"]
         self.poses_test = torch.from_numpy(data["test"]["poses"])
+
+        raw_shape = self.images_train.shape[1:3]
+        if raw_shape != tuple(self.cfg.data.image_shape):
+            target_size = self.cfg.data.image_shape
+            self.images_train = np.stack([cv2.resize(image, target_size)
+                for image in self.images_train])
+            self.images_val = np.stack([cv2.resize(image, target_size)
+                for image in self.images_val])
+            self.images_test = np.stack([cv2.resize(image, target_size)
+                for image in self.images_test])
+
+        self.images_train = torch.from_numpy(self.images_train)
+        self.images_val = torch.from_numpy(self.images_val)
+        self.images_test = torch.from_numpy(self.images_test)
+
         focal = data["train"]["focal"]
         h, w = self.images_train.shape[1:3]
+        focal_x = focal * w / raw_shape[1]
+        focal_y = focal * h / raw_shape[0]
         self.intrinsics = torch.tensor([
-            [focal, 0, 0.5 * w],
-            [0, focal, 0.5 * h],
+            [focal_x, 0, 0.5 * w],
+            [0, focal_y, 0.5 * h],
             [0, 0, 1]
         ])
 
@@ -68,7 +87,6 @@ class Trainer:
         # compute rays_o and rays_d
         rays_o, rays_d = self.model.compute_rays(self.image_shape,
             self.intrinsics, pose)
-
         # sample random coordinates calculate view directions
         if training:
             rays_o, rays_d, targets = self.model.sample_random_coords(rays_o,
@@ -171,7 +189,7 @@ class Trainer:
 
     def train(self):
         if self.cfg.debug:
-            self.cfg.eval.freq = 1
+            self.cfg.eval.freq = 100
         wandb_cfg = OmegaConf.load("wandb_cfg.yaml")
         wandb.login(key=wandb_cfg.key)
         wandb.init(
@@ -179,11 +197,13 @@ class Trainer:
             entity=wandb_cfg.entity,
             project=wandb_cfg.project,
             name=self.cur_time
-        )            
+        )
 
         best_psnr = 0
         for i in range(self.cfg.train.n_iters):
+            self.optimizer.zero_grad()
             self.model.train()
+            self.model.step = i
             # sample one image and pose
             image, pose = self.sample_image()
 
@@ -214,12 +234,15 @@ class Trainer:
                     "video": video
                 })
 
-                if val_psnr > best_psnr:
-                    best_psnr = val_psnr
+                print(f"Iter {i}\t\tLoss={loss:.4f}|{val_loss:.4f}, PSNR={psnr:.4f}|{val_psnr:.4f}")
+
+                if not self.cfg.debug:
+                    if val_psnr > best_psnr:
+                        best_psnr = val_psnr
+                        self.save_ckpt(os.path.join(self.log_dir,
+                            "weights/ckpt_best.pth"))
                     self.save_ckpt(os.path.join(self.log_dir,
-                        "weights/ckpt_best.pth"))
-                self.save_ckpt(os.path.join(self.log_dir,
-                    f"weights/ckpt_{i}.pth"))
+                        f"weights/ckpt_{i}.pth"))
 
             wandb.log(metrics)
 
@@ -227,13 +250,8 @@ class Trainer:
 
 
 if __name__ == "__main__":
-    # cfg = OmegaConf.load("configs/lego.yaml")
-    # trainer = Trainer(cfg)
-    # ckpt = {
-    #     "model": trainer.model.state_dict(),
-    #     "optimizer": trainer.optimizer.state_dict(),
-    #     "scheduler": trainer.scheduler.state_dict(),
-    # }
-    # torch.save(ckpt, "test.pth")
-    ckpt = torch.load("test.pth")
-    print(1)
+    cfg = OmegaConf.load("configs/lego.yaml")
+    cfg.debug = True
+
+    trainer = Trainer(cfg)
+    weights = torch.load()
