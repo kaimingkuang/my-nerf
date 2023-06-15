@@ -55,18 +55,6 @@ class NeRF(nn.Module):
         return rays_o, rays_d
 
     def sample_random_coords(self, rays_o, rays_d, image, n_coords):
-        # pos_coords = torch.argwhere(image.sum(dim=-1) > 0)
-        # neg_coords = torch.argwhere(image.sum(dim=-1) == 0)
-        # n_pos_coords = int(self.cfg.train.batch_size\
-        #     * self.cfg.model.pos_pts_pct)
-        # n_neg_coords = n_coords - n_pos_coords
-        # rnd_pos_indices = np.random.choice(pos_coords.size()[0],
-        #     size=(n_pos_coords, ), replace=False)
-        # rnd_neg_indices = np.random.choice(neg_coords.size()[0],
-        #     size=(n_neg_coords, ), replace=False)
-        # rnd_pos_coords = pos_coords[rnd_pos_indices]
-        # rnd_neg_coords = neg_coords[rnd_neg_indices]
-        # rnd_coords = torch.cat([rnd_pos_coords, rnd_neg_coords], dim=0)
         h, w = image.size()[:2]
         coords = torch.stack(torch.meshgrid(torch.linspace(0, h - 1, h),
             torch.linspace(0, w - 1, w), indexing="ij"), dim=-1)

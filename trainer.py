@@ -32,7 +32,7 @@ class Trainer:
             gamma)
 
         # camera poses for visualization
-        thetas = np.linspace(-np.pi, np.pi, self.cfg.eval.n_vis_poses + 1)
+        thetas = np.linspace(-np.pi, np.pi, self.cfg.eval.n_vis_poses + 1)[:-1]
         phi = eval(self.cfg.eval.vis_phi)
         self.vis_poses = get_vis_poses(thetas, phi, self.cfg.eval.vis_radius)
 
