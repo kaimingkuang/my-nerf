@@ -11,7 +11,8 @@ train:
 model:
     near: 2
     far: 6
-    n_pts_on_ray: 64
+    n_pts_coarse: 64
+    n_pts_fine: 128
     perturb: True
     min_freq_pow_pts: 0
     max_freq_pow_pts: 10
@@ -20,6 +21,7 @@ model:
     sigma_mlp_channels: [63, 256, 256, 256, 256, 256, 256, 256, 256]
     rgb_mlp_channels: [283, 256, 128]
     pos_pts_pct: 0.9
+    hier_vol_render: True
 
 eval:
     freq: 1000

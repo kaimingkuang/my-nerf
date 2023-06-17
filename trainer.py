@@ -103,10 +103,10 @@ class Trainer:
             targets = targets.cuda()
 
         # sample points on rays
-        pts_on_rays, ts = self.model.sample_points_on_rays(
+        pts_on_rays, ts_coarse = self.model.sample_points_on_rays(
             self.cfg.model.near,
             self.cfg.model.far,
-            self.cfg.model.n_pts_on_ray,
+            self.cfg.model.n_pts_coarse,
             rays_o,
             rays_d
         )
@@ -121,25 +121,70 @@ class Trainer:
 
         # send encodings to network inference and get RGB pred
         if training:
-            rgbs, sigmas = self.model(pt_encodings.cuda(),
+            rgbs_coarse, sigmas_coarse = self.model(pt_encodings.cuda(),
                 view_encodings.cuda())
         else:
             batch_size = self.cfg.train.batch_size
             total_size = pt_encodings.size(0)
-            rgbs = []
-            sigmas = []
+            rgbs_coarse = []
+            sigmas_coarse = []
             for i in range(int(np.ceil(total_size / batch_size))):
                 beg, end = i * batch_size, (i + 1) * batch_size
                 res = self.model(pt_encodings[beg:end].cuda(),
                     view_encodings[beg:end].cuda())
-                rgbs.append(res[0])
-                sigmas.append(res[1])
-            rgbs = torch.cat(rgbs)
-            sigmas = torch.cat(sigmas)
+                rgbs_coarse.append(res[0])
+                sigmas_coarse.append(res[1])
+            rgbs_coarse = torch.cat(rgbs_coarse)
+            sigmas_coarse = torch.cat(sigmas_coarse)
 
         # volume rendering using RGB and sigma outputs from the model
         dir_norms = torch.norm(rays_d, dim=-1, keepdim=True)
-        rgbs = self.model.render_volume(rgbs, sigmas, ts, dir_norms)
+        rgbs, weights = self.model.render_volume(rgbs_coarse, sigmas_coarse,
+            ts_coarse, dir_norms)
+
+        if self.cfg.model.hier_vol_render:
+            # resample new points along the ray
+            pts_fine, ts_fine = self.model.hierarchical_sample(
+                ts_coarse,
+                weights,
+                self.cfg.model.n_pts_fine,
+                pts_on_rays,
+                rays_o,
+                rays_d
+            )
+            # get positional encodings
+            pt_encodings_fine = self.model.compute_pos_encodings(pts_fine,
+                self.cfg.model.min_freq_pow_pts,
+                self.cfg.model.max_freq_pow_pts)
+            # run network
+            if training:
+                rgbs_fine, sigmas_fine = self.model(pt_encodings_fine.cuda(),
+                    view_encodings.cuda())
+            else:
+                batch_size = self.cfg.train.batch_size
+                total_size = pt_encodings_fine.size(0)
+                rgbs_fine = []
+                sigmas_fine = []
+                for i in range(int(np.ceil(total_size / batch_size))):
+                    beg, end = i * batch_size, (i + 1) * batch_size
+                    res = self.model(pt_encodings_fine[beg:end].cuda(),
+                        view_encodings[beg:end].cuda())
+                    rgbs_fine.append(res[0])
+                    sigmas_fine.append(res[1])
+                rgbs_fine = torch.cat(rgbs_fine)
+                sigmas_fine = torch.cat(sigmas_fine)
+            # run volume rendering again with both coarse and fine inferences
+            # TODO: rgbs and sigmas needs to be sorted before volume rendering
+            rgbs_all = torch.cat([rgbs_coarse, rgbs_fine], dim=1)
+            sigmas_all = torch.cat([sigmas_coarse, sigmas_fine], dim=1)
+            ts_all = torch.cat([ts_coarse, ts_fine], dim=1)
+            sorted_indices = torch.argsort(ts_all, dim=1).to(rgbs_all.device)
+            rgbs = torch.gather(rgbs_all, dim=1,
+                index=sorted_indices[..., None].expand((-1, -1, 3)))
+            sigmas = torch.gather(sigmas_all, dim=1, index=sorted_indices)
+            ts = torch.sort(ts_all, dim=-1).values
+            rgbs, _ = self.model.render_volume(rgbs, sigmas, ts,
+                dir_norms)
 
         if image is not None:
             return rgbs, targets

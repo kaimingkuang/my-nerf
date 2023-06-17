@@ -87,6 +87,43 @@ class NeRF(nn.Module):
             * ts[..., None]
 
         return pts_on_rays, ts
+        
+    def hierarchical_sample(self, ts, weights, n_pts, pts_coarse,
+            rays_o, rays_d):
+        # sample points according to weights given in fine mode,
+        # aka, hierarchical volume rendering (Section 5.2)
+        bins = 0.5 * (ts[..., 1:] + ts[..., :-1])
+        weights = weights[..., 1:-1] + 1e-5
+        pdf = weights / torch.sum(weights, -1, keepdim=True)
+        cdf = torch.cumsum(pdf, -1)
+        cdf = torch.cat([torch.zeros_like(cdf[...,:1]), cdf], -1)
+
+        # Take uniform samples
+        u = torch.rand(list(cdf.shape[:-1]) + [n_pts])
+
+        # Invert CDF
+        u = u.contiguous()
+        indices = torch.searchsorted(cdf, u, right=True)
+        lowers = torch.max(torch.zeros_like(indices - 1), indices - 1)
+        uppers = torch.min((cdf.shape[-1] - 1) * torch.ones_like(indices),
+            indices)
+        bounds = torch.stack([lowers, uppers], -1)
+
+        matched_shape = [bounds.shape[0], bounds.shape[1], cdf.shape[-1]]
+        cdf = torch.gather(cdf.unsqueeze(1).expand(matched_shape), 2,
+            bounds)
+        bins = torch.gather(bins.unsqueeze(1).expand(matched_shape), 2,
+            bounds)
+
+        denom = (cdf[..., 1] - cdf[..., 0])
+        denom = torch.where(denom < 1e-5, torch.ones_like(denom), denom)
+        ts = (u - cdf[...,0]) / denom
+        ts_fine = (bins[...,0] + ts * (bins[...,1] - bins[...,0])).detach()
+
+        pts_fine = rays_o[:, None, :] + rays_d[:, None, :]\
+            * ts_fine[..., None]
+
+        return pts_fine, ts_fine
 
     def compute_pos_encodings(self, pos, min_freq_pow, max_freq_pow):
         frequencies = torch.pow(2, torch.arange(min_freq_pow, max_freq_pow))
@@ -127,4 +164,4 @@ class NeRF(nn.Module):
             1 - alphas + 1e-10], dim=-1), -1)[:, :-1]
         rgbs = torch.sum(weights[..., None] * rgbs, dim=1)
 
-        return rgbs
+        return rgbs, weights.cpu()
